@@ -91,13 +91,48 @@ def repl():
             if len(args) != 2:
                 print("cp: usage: cp <src> <dst>")
                 continue
-            mapping = list_dir(current_path)
-            src = mapping.get(args[0])
-            dst = args[1]
-            if src:
-                subprocess.run(["cp", str(src), dst])
+
+            src_arg, dst_arg = args
+            # If absolute path or exists on disk, treat as real file
+            src_path = Path(src_arg)
+            if src_path.is_absolute() and src_path.exists():
+                # dst is assumed to be in current GVFS dir by display name
+                mapping = list_dir(current_path)
+                dst = mapping.get(dst_arg)
+                if dst is None:
+                    dst = current_path / dst_arg  # assume target name
+                try:
+                    subprocess.run(["cp", str(src_path), str(dst)], check=True)
+                    print(f"Copied {src_path} → {dst}")
+                except subprocess.CalledProcessError as e:
+                    print(f"cp: failed: {e}")
             else:
-                print(f"cp: no such file: {args[0]}")
+                # Otherwise both are assumed to be display-named GVFS files
+                mapping = list_dir(current_path)
+                src = mapping.get(src_arg)
+                if src is None:
+                    print(f"cp: no such file: {src_arg}")
+                    continue
+                dst = current_path / dst_arg
+                try:
+                    subprocess.run(["cp", str(src), str(dst)], check=True)
+                    print(f"Copied {src} → {dst}")
+                except subprocess.CalledProcessError as e:
+                    print(f"cp: failed: {e}")
+
+            # Check if copying from GVFS to real FS
+            if src and dst_arg.startswith("/"):
+                dst_path = Path(dst_arg)
+                if dst_path.is_dir():
+                    display_name = get_display_name(src)
+                    if display_name:
+                        dst_path = dst_path / display_name
+                try:
+                    subprocess.run(["gio", "copy", str(src), str(dst_path)], check=True)
+                    print(f"Copied {src} → {dst_path} via gio")
+                except subprocess.CalledProcessError as e:
+                    print(f"gio cp failed: {e}")
+                
 
         elif cmd == "pwd":
             display_path = []
