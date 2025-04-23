@@ -28,15 +28,16 @@ def get_display_name(path):
         print("[FATAL] 'gio' not found in PATH. Install 'gvfs' and 'glib2'.")
         sys.exit(1)
 
-def list_dir(path, mapping_store=None):
+def list_dir(path, mapping_store=None, silent=False):
     entries = list(path.iterdir())
     mapping = {}
     for entry in entries:
         display_name = get_display_name(entry)
         if display_name:
             mapping[display_name] = entry
-    for name in sorted(mapping):
-        print(name)
+    if not silent:
+        for name in sorted(mapping):
+            print(name)
     if mapping_store is not None:
         mapping_store.clear()
         mapping_store.update(mapping)
@@ -75,15 +76,22 @@ def repl():
             if not args:
                 print("cd: missing argument")
                 continue
-            target = args[0]
-            #print(f"DEBUG cd to {target} mapping: {mapping} name_to_path: {name_to_path}")
+
+            target = args[0].strip()
             if target == "..":
                 if len(path_stack) > 1:
                     path_stack.pop()
                     current_path = path_stack[-1]
-            elif target in name_to_path:
-                path_stack.append(name_to_path[target])
-                current_path = name_to_path[target]
+                continue
+
+            # Refresh mapping before resolving target
+            name_to_path.clear()
+            mapping = list_dir(current_path, name_to_path, silent=True)
+
+            if target in name_to_path:
+                new_path = name_to_path[target]
+                path_stack.append(new_path)
+                current_path = new_path
             else:
                 print(f"cd: no such file or directory: {target}")
 
