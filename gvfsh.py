@@ -6,6 +6,9 @@ import shlex
 import subprocess
 from pathlib import Path
 
+import readline
+readline.parse_and_bind("tab: complete")
+
 GVFS_BASE = Path(f"/run/user/{os.getuid()}/gvfs")
 ROOT = next(GVFS_BASE.glob("google-drive:*"), None)
 if not ROOT:
@@ -42,6 +45,31 @@ def list_dir(path, mapping_store=None, silent=False):
         mapping_store.clear()
         mapping_store.update(mapping)
     return mapping
+
+def completer(text, state):
+    # Combine GVFS display names and system filenames
+    matches = []
+
+    try:
+        # Local dir matches (real FS)
+        real_matches = [f for f in os.listdir('.') if f.startswith(text)]
+        matches.extend(real_matches)
+    except Exception:
+        pass
+
+    try:
+        # GVFS display name matches
+        mapping = list_dir(current_path, silent=True)
+        gvfs_matches = [name for name in mapping if name.startswith(text)]
+        matches.extend(gvfs_matches)
+    except Exception:
+        pass
+
+    matches = sorted(set(matches))
+    if state < len(matches):
+        return matches[state]
+    return None
+
 
 def repl():
     global current_path
@@ -103,9 +131,9 @@ def repl():
             src_arg, dst_arg = args
             # If absolute path or exists on disk, treat as real file
             src_path = Path(src_arg)
+            mapping = list_dir(current_path)
             if src_path.is_absolute() and src_path.exists():
                 # dst is assumed to be in current GVFS dir by display name
-                mapping = list_dir(current_path)
                 dst = mapping.get(dst_arg)
                 if dst is None:
                     dst = current_path / dst_arg  # assume target name
@@ -116,7 +144,6 @@ def repl():
                     print(f"cp: failed: {e}")
             else:
                 # Otherwise both are assumed to be display-named GVFS files
-                mapping = list_dir(current_path)
                 src = mapping.get(src_arg)
                 if src is None:
                     print(f"cp: no such file: {src_arg}")
@@ -149,28 +176,71 @@ def repl():
                 display_path.append(name if name else str(p.name))
             print("/" + "/".join(display_path) if display_path else "/")
 
+        elif cmd == "clear":
+            os.system("clear")
+
+        elif cmd == "info":
+            if not args:
+                print("info: missing argument")
+                continue
+
+            target = args[0].strip()
+            mapping = list_dir(current_path, silent=True)
+            if target not in mapping:
+                print(f"info: no such file: {target}")
+                continue
+
+            target_path = mapping[target]
+            try:
+                output = subprocess.check_output(["gio", "info", str(target_path)], text=True)
+                print(output)
+            except subprocess.CalledProcessError as e:
+                print(f"[ERROR] Failed to get info on {target_path}:\n{e}")
+
         elif cmd == "help":
             print("""
-                Available commands:
-                ls               - List contents of the current directory
-                cd <name>        - Change directory by display name (quoted if needed)
-                cp <src> <dest>  - Copy files (real ↔ GVFS, or GVFS ↔ real)
-                pwd              - Show current human-readable path
-                help             - Show this help message
-                exit             - Exit gvfsh like a responsible adult
-
-                Tips:
-                - Use quotes for names with spaces (e.g. cd "My Drive")
-                - Files are copied using gio if needed to handle GVFS madness
-                - All filenames shown are their actual Google Drive names (not IDs)
-                - Tab completion coming soon™ (hold onto your filesystems)
-                """)
+            Available commands:
+            ls               - List contents of the current directory
+            cd <name>        - Change directory by display name (quoted if needed)
+            cp <src> <dest>  - Copy files (real ↔ GVFS, or GVFS ↔ real)
+            pwd              - Show current human-readable path
+            help             - Show this help message
+            exit             - Exit gvfsh like a responsible adult
+            clear            - Clears the screen
+            info             - shows gio info about file
+                  
+            Tips:
+            - Use quotes for names with spaces (e.g. cd "My Drive")
+            - Files are copied using gio if needed to handle GVFS madness
+            - All filenames shown are their actual Google Drive names (not IDs)
+            - Tab completion should work too.
+            """)
 
         else:
             print(f"{cmd}: command not found")
 
 
 if __name__ == "__main__":
-    print("Welcome to GVFS-Shell — cli navigation of Google Drive")
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("""
+    gvfsh.py - Google Drive Shell over GVFS
+
+    Usage:
+    ./gvfsh.py           Launch interactive shell
+    ./gvfsh.py --help    Show this message and exit
+
+    Requirements:
+    - Google Drive mounted via GVFS (e.g. Nautilus)
+    - Python 3.7+
+    - Packages: glib2, gvfs, gio (CLI)
+
+    This shell allows Google Drive navigation and file operations using display names instead of cryptic IDs.
+
+    Inside the shell, type `help` for a list of commands.
+    """)
+        sys.exit(0)
+
+    readline.set_completer(completer)
+    print("Welcome to GVFS-Shell — CLI navigation of Google Drive")
     repl()
 
