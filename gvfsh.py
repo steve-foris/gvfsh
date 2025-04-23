@@ -149,10 +149,28 @@ def repl():
                 display_path.append(name if name else str(p.name))
             print("/" + "/".join(display_path) if display_path else "/")
 
+        elif cmd == "help":
+            print("""
+                Available commands:
+                ls               - List contents of the current directory
+                cd <name>        - Change directory by display name (quoted if needed)
+                cp <src> <dest>  - Copy files (real ↔ GVFS, or GVFS ↔ real)
+                pwd              - Show current human-readable path
+                help             - Show this help message
+                exit             - Exit gvfsh like a responsible adult
+
+                Tips:
+                - Use quotes for names with spaces (e.g. cd "My Drive")
+                - Files are copied using gio if needed to handle GVFS madness
+                - All filenames shown are their actual Google Drive names (not IDs)
+                - Tab completion coming soon™ (hold onto your filesystems)
+                """)
+
         else:
             print(f"{cmd}: command not found")
 
+
 if __name__ == "__main__":
-    print("Welcome to GVFS-Hell Shell™ — where Google Drive makes no sense and we fix it anyway.")
+    print("Welcome to GVFS-Shell — cli navigation of Google Drive")
     repl()
 
